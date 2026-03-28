@@ -13,6 +13,7 @@ final class GlassesStreamManager {
     // MARK: - State
 
     var registrationState: String = "Not registered"
+    var sdkConfigureError: String?
     var deviceName: String = "No device"
     var isStreaming = false
     var cameraPermission: String = "Unknown"

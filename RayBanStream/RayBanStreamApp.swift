@@ -3,11 +3,15 @@ import MWDATCore
 
 @main
 struct LifeLensApp: App {
+    @State private var sdkError: String?
+
     init() {
         do {
             try Wearables.configure()
         } catch {
-            print("Failed to configure Wearables SDK: \(error)")
+            let msg = "\(error.localizedDescription) (code: \((error as NSError).code))"
+            print("Failed to configure Wearables SDK: \(msg)")
+            _sdkError = State(initialValue: msg)
         }
 
         // Configure global appearance
@@ -16,7 +20,7 @@ struct LifeLensApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(sdkConfigureError: sdkError)
                 .preferredColorScheme(.dark)
         }
     }

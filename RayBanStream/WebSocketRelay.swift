@@ -8,6 +8,8 @@ import Observation
 @Observable
 final class WebSocketRelay: NSObject {
     var isConnected = false
+    var isConnecting = false
+    var connectionError: String?
     var framesSent: Int = 0
     var serverURL: String = ""
 
@@ -28,11 +30,13 @@ final class WebSocketRelay: NSObject {
 
     func connect(to url: String) {
         guard let wsURL = URL(string: url) else {
-            print("[WebSocket] Invalid URL: \(url)")
+            connectionError = "Invalid URL"
             return
         }
 
         serverURL = url
+        isConnecting = true
+        connectionError = nil
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = session?.webSocketTask(with: wsURL)
         webSocket?.resume()
@@ -43,6 +47,8 @@ final class WebSocketRelay: NSObject {
         webSocket?.cancel(with: .normalClosure, reason: nil)
         webSocket = nil
         isConnected = false
+        isConnecting = false
+        connectionError = nil
     }
 
     /// Send a UIImage frame as JPEG bytes over the WebSocket.
@@ -115,8 +121,24 @@ extension WebSocketRelay: URLSessionWebSocketDelegate {
     ) {
         DispatchQueue.main.async {
             self.isConnected = true
+            self.isConnecting = false
+            self.connectionError = nil
             self.framesSent = 0
             print("[WebSocket] Connected to \(self.serverURL)")
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        DispatchQueue.main.async {
+            self.isConnected = false
+            self.isConnecting = false
+            if let error = error {
+                self.connectionError = error.localizedDescription
+            }
         }
     }
 
@@ -128,6 +150,7 @@ extension WebSocketRelay: URLSessionWebSocketDelegate {
     ) {
         DispatchQueue.main.async {
             self.isConnected = false
+            self.isConnecting = false
             print("[WebSocket] Disconnected (code: \(closeCode))")
         }
     }

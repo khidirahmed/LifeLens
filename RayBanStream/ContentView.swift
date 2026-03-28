@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    var sdkConfigureError: String? = nil
     @State private var manager = GlassesStreamManager()
     @State private var serverIP: String = ""
     @State private var serverPort: String = "8765"
@@ -18,6 +19,21 @@ struct ContentView: View {
                     headerView
                         .opacity(appearAnimation ? 1 : 0)
                         .offset(y: appearAnimation ? 0 : -20)
+
+                    // SDK init error banner
+                    if let err = sdkConfigureError {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text("SDK init failed: \(err)")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(LifeLensTheme.warning)
+                        .cornerRadius(10)
+                        .opacity(appearAnimation ? 1 : 0)
+                    }
 
                     // Preview Section
                     previewSection
@@ -227,7 +243,8 @@ struct ContentView: View {
                 HStack {
                     PulsingStatusIndicator(isActive: manager.relay.isConnected)
 
-                    Text(manager.relay.isConnected ? "Connected" : "Disconnected")
+                    Text(manager.relay.isConnecting ? "Connecting..." :
+                         manager.relay.isConnected  ? "Connected"     : "Disconnected")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.6))
 
@@ -241,16 +258,30 @@ struct ContentView: View {
                         }
                         .buttonStyle(GradientButtonStyle(isDestructive: true))
                     } else {
-                        Button("Connect") {
+                        Button(manager.relay.isConnecting ? "Connecting..." : "Connect") {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder),
+                                to: nil, from: nil, for: nil
+                            )
                             let url = "ws://\(serverIP):\(serverPort)"
                             withAnimation(.spring(response: 0.4)) {
                                 manager.relay.connect(to: url)
                             }
                         }
                         .buttonStyle(GradientButtonStyle())
-                        .disabled(serverIP.isEmpty)
+                        .disabled(serverIP.isEmpty || manager.relay.isConnecting)
                         .opacity(serverIP.isEmpty ? 0.5 : 1.0)
                     }
+                }
+
+                if let error = manager.relay.connectionError {
+                    HStack(spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                        Text(error)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(LifeLensTheme.warning)
                 }
             }
         }
@@ -453,5 +484,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(sdkConfigureError: nil)
 }
