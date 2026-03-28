@@ -1,32 +1,19 @@
-//
-//  RayBanStreamApp.swift
-//  RayBanStream
-//
-//  Created by Khidir Ahmed on 3/26/26.
-//
-
 import SwiftUI
-import SwiftData
+import MWDATCore
 
 @main
 struct RayBanStreamApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
+    init() {
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            try Wearables.configure()
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            print("Failed to configure Wearables SDK: \(error)")
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(sharedModelContainer)
     }
 }

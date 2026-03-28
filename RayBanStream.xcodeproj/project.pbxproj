@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		510567952F77384E00820510 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = 510567942F77384E00820510 /* MWDATCamera */; };
+		510567972F77384E00820510 /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 510567962F77384E00820510 /* MWDATCore */; };
+		510567992F77384E00820510 /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 510567982F77384E00820510 /* MWDATMockDevice */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		510567632F75BC6E00820510 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,22 +35,9 @@
 		5105676C2F75BC6E00820510 /* RayBanStreamUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RayBanStreamUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		510567742F75BC6E00820510 /* Exceptions for "RayBanStream" folder in "RayBanStream" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 510567502F75BC6C00820510 /* RayBanStream */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		510567532F75BC6C00820510 /* RayBanStream */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				510567742F75BC6E00820510 /* Exceptions for "RayBanStream" folder in "RayBanStream" target */,
-			);
 			path = RayBanStream;
 			sourceTree = "<group>";
 		};
@@ -65,6 +58,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				510567952F77384E00820510 /* MWDATCamera in Frameworks */,
+				510567992F77384E00820510 /* MWDATMockDevice in Frameworks */,
+				510567972F77384E00820510 /* MWDATCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -91,6 +87,7 @@
 				510567532F75BC6C00820510 /* RayBanStream */,
 				510567652F75BC6E00820510 /* RayBanStreamTests */,
 				5105676F2F75BC6E00820510 /* RayBanStreamUITests */,
+				5105678C2F7737B000820510 /* Frameworks */,
 				510567522F75BC6C00820510 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -103,6 +100,13 @@
 				5105676C2F75BC6E00820510 /* RayBanStreamUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		5105678C2F7737B000820510 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -125,6 +129,9 @@
 			);
 			name = RayBanStream;
 			packageProductDependencies = (
+				510567942F77384E00820510 /* MWDATCamera */,
+				510567962F77384E00820510 /* MWDATCore */,
+				510567982F77384E00820510 /* MWDATMockDevice */,
 			);
 			productName = RayBanStream;
 			productReference = 510567512F75BC6C00820510 /* RayBanStream.app */;
@@ -208,6 +215,9 @@
 			);
 			mainGroup = 510567482F75BC6C00820510;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				510567932F77384600820510 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 510567522F75BC6C00820510 /* Products */;
 			projectDirPath = "";
@@ -287,18 +297,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = RayBanStream/RayBanStream.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FU8R4TZQ2G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = RayBanStream/Info.plist;
+				INFOPLIST_FILE = "RayBanStream/MWDAT-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -321,18 +330,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = RayBanStream/RayBanStream.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FU8R4TZQ2G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = RayBanStream/Info.plist;
+				INFOPLIST_FILE = "RayBanStream/MWDAT-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -595,6 +603,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		510567932F77384600820510 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/meta-wearables-dat-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		510567942F77384E00820510 /* MWDATCamera */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 510567932F77384600820510 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCamera;
+		};
+		510567962F77384E00820510 /* MWDATCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 510567932F77384600820510 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCore;
+		};
+		510567982F77384E00820510 /* MWDATMockDevice */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 510567932F77384600820510 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATMockDevice;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 510567492F75BC6C00820510 /* Project object */;
 }
