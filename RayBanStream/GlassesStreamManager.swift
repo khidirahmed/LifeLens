@@ -68,20 +68,29 @@ final class GlassesStreamManager {
 
     /// Start observing registration state and device list.
     func startObserving() {
+        print("🔍 startObserving called")
+        print("🔍 Wearables.shared = \(Wearables.shared)")
+
         Task { [wearables] in
+            print("🔍 Starting registrationStateStream...")
             for await state in wearables.registrationStateStream() {
+                print("🔍 registrationState updated: \(state)")
                 self.registrationState = "\(state)"
             }
+            print("🔍 registrationStateStream ended unexpectedly")
         }
 
         Task { [wearables] in
+            print("🔍 Starting devicesStream...")
             for await devices in wearables.devicesStream() {
+                print("🔍 devicesStream updated: \(devices)")
                 if let first = devices.first {
                     self.deviceName = "\(first)"
                 } else {
                     self.deviceName = "No device"
                 }
             }
+            print("🔍 devicesStream ended unexpectedly")
         }
     }
 

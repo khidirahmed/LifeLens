@@ -33,7 +33,7 @@
 		<key>AppLinkURLScheme</key>
 		<string>raybanstream://</string>
 		<key>MetaAppID</key>
-		<string></string>
+		<string>com.khidir.RayBanStream</string>
 	</dict>
 </dict>
 </plist>
