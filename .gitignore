@@ -1,0 +1,23 @@
+# Xcode
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Credentials / secrets
+RayBanStream/MWDAT-Info.plist
+
+# CocoaPods
+Pods/
+
+# Swift Package Manager
+.build/
+*.resolved
+
+# macOS
+.DS_Store
