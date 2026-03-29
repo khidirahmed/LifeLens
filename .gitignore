@@ -21,3 +21,12 @@ Pods/
 
 # macOS
 .DS_Store
+
+# Nested repo (local); do not commit as embedded gitlink by mistake
+swiftImageProject/
+
+# Python
+stream_server/.venv/
+stream_server/__pycache__/
+python-receiver/__pycache__/
+*.pyc

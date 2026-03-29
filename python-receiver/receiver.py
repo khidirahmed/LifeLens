@@ -1,6 +1,7 @@
 import asyncio
 import signal
 import sys
+import threading
 import numpy as np
 import cv2
 import websockets
@@ -8,6 +9,7 @@ import websockets
 HOST = "0.0.0.0"
 PORT = 8765
 
+_frame_lock = threading.Lock()
 latest_frame = None
 frame_count = 0
 connected_clients = set()
@@ -23,8 +25,9 @@ async def handle_client(websocket):
                 np_arr = np.frombuffer(message, dtype=np.uint8)
                 frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
                 if frame is not None:
-                    latest_frame = frame
-                    frame_count += 1
+                    with _frame_lock:
+                        latest_frame = frame
+                        frame_count += 1
                 else:
                     print("[!] Failed to decode frame")
             else:
@@ -35,6 +38,7 @@ async def handle_client(websocket):
         connected_clients.discard(websocket)
 
 def display_loop():
+    """Runs on the main thread (required for OpenCV GUI on macOS)."""
     global latest_frame, frame_count
     print(f"\n{'='*50}")
     print("Ray-Ban Meta Stream Receiver")
@@ -46,9 +50,12 @@ def display_loop():
     cv2.namedWindow("Ray-Ban Meta Stream", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Ray-Ban Meta Stream", 1280, 720)
     while True:
-        if latest_frame is not None:
-            display = latest_frame.copy()
-            cv2.putText(display, f"Frames: {frame_count}", (10, 30),
+        with _frame_lock:
+            lf = None if latest_frame is None else latest_frame.copy()
+            fc = frame_count
+        if lf is not None:
+            display = lf.copy()
+            cv2.putText(display, f"Frames: {fc}", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             if connected_clients:
                 cv2.putText(display, "LIVE", (display.shape[1] - 80, 30),
@@ -65,9 +72,9 @@ def display_loop():
         if key == ord("q"):
             print("\n[*] Shutting down...")
             break
-        elif key == ord("s") and latest_frame is not None:
-            filename = f"rayban_screenshot_{frame_count}.jpg"
-            cv2.imwrite(filename, latest_frame)
+        elif key == ord("s") and lf is not None:
+            filename = f"rayban_screenshot_{fc}.jpg"
+            cv2.imwrite(filename, lf)
             print(f"[+] Screenshot saved: {filename}")
     cv2.destroyAllWindows()
 
@@ -77,7 +84,6 @@ async def start_server():
 
 def main():
     loop = asyncio.new_event_loop()
-    import threading
     server_thread = threading.Thread(
         target=lambda: loop.run_until_complete(start_server()),
         daemon=True,
