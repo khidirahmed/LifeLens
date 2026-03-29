@@ -11,71 +11,26 @@ Usage:
   python relay_server.py
 
 MP4 segments are not saved locally by default. Use --send-segment-url to HTTP POST each
-completed segment (~every 30s). Uploads run in a background thread so the WebSocket stream
-is not blocked. Optional --send-segment-meta-url and --segment-dir.
+completed segment (~every 30s). Optional --segment-dir also writes a copy to disk.
 Use --no-display for headless (no OpenCV window).
-
-Tailscale: set URLs in stream_server/.env (LIFELENS_SEND_SEGMENT_URL, etc.) or use CLI flags.
-See segment_receiver.py on the receiver host.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import shutil
 import socket
 import tempfile
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 from collections import deque
 from pathlib import Path
 
 import websockets
-
-
-def _load_dotenv() -> None:
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
-    load_dotenv(Path(__file__).resolve().parent / ".env")
-
-
-def _env_str(key: str, default: str = "") -> str:
-    v = os.environ.get(key)
-    if v is None:
-        return default
-    return str(v).strip()
-
-
-def _env_int(key: str, default: int) -> int:
-    v = _env_str(key)
-    if not v:
-        return default
-    try:
-        return int(v)
-    except ValueError:
-        return default
-
-
-def _env_float(key: str, default: float) -> float:
-    v = _env_str(key)
-    if not v:
-        return default
-    try:
-        return float(v)
-    except ValueError:
-        return default
-
-
-def _env_bool(key: str) -> bool:
-    return _env_str(key).lower() in ("1", "true", "yes", "on")
 
 
 def _guess_lan_ip() -> str:
@@ -91,20 +46,6 @@ def _guess_lan_ip() -> str:
 
 def _is_jpeg(data: bytes) -> bool:
     return len(data) >= 3 and data[:3] == b"\xff\xd8\xff"
-
-
-def _http_post_json(url: str, payload: dict, quiet: bool) -> None:
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=body, method="POST")
-    req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            if not quiet:
-                print(f"[+] Segment meta -> HTTP {resp.status} ({url})")
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Meta POST failed: HTTP {e.code} {e.reason}") from e
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"Meta POST failed: {e.reason}") from e
 
 
 def _http_post_mp4(url: str, data: bytes, segment_index: int, quiet: bool) -> None:
@@ -123,80 +64,6 @@ def _http_post_mp4(url: str, data: bytes, segment_index: int, quiet: bool) -> No
         raise RuntimeError(f"Upload failed: {e.reason}") from e
 
 
-def _segment_upload_job(
-    meta_url: str | None,
-    upload_url: str | None,
-    data: bytes,
-    idx: int,
-    quiet: bool,
-) -> None:
-    """HTTP POST meta + MP4 (called from I/O worker)."""
-    if meta_url:
-        try:
-            _http_post_json(
-                meta_url,
-                {
-                    "kind": "segment_complete",
-                    "segment_index": idx,
-                    "byte_length": len(data),
-                    "content_type": "video/mp4",
-                },
-                quiet,
-            )
-        except RuntimeError as e:
-            if not quiet:
-                print(f"[!] {e}")
-    if upload_url:
-        try:
-            _http_post_mp4(upload_url, data, idx, quiet)
-        except RuntimeError as e:
-            if not quiet:
-                print(f"[!] {e}")
-
-
-def _segment_finalize_worker(
-    path_str: str,
-    idx: int,
-    out_dir_str: str | None,
-    meta_url: str | None,
-    upload_url: str | None,
-    quiet: bool,
-) -> None:
-    """Read MP4 from disk, optional local copy, HTTP upload, unlink — never blocks WebSocket loop."""
-    path = Path(path_str)
-    try:
-        data = path.read_bytes()
-    except OSError as e:
-        if not quiet:
-            print(f"[!] Could not read segment file: {e}")
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        return
-
-    if out_dir_str:
-        out_dir = Path(out_dir_str)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        dest = out_dir / f"lifelens_{ts}_{idx:04d}.mp4"
-        try:
-            shutil.copyfile(path, dest)
-            if not quiet:
-                print(f"[+] Saved copy: {dest}")
-        except OSError as e:
-            if not quiet:
-                print(f"[!] Could not save segment copy: {e}")
-
-    if meta_url or upload_url:
-        _segment_upload_job(meta_url, upload_url, data, idx, quiet)
-
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
 class SegmentRecorder:
     """Encodes JPEG frames to MP4 in a temp file, then uploads and/or copies to disk."""
 
@@ -204,7 +71,6 @@ class SegmentRecorder:
         self,
         *,
         upload_url: str | None,
-        meta_url: str | None,
         out_dir: Path | None,
         segment_seconds: float = 30.0,
         fps: float = 24.0,
@@ -213,7 +79,6 @@ class SegmentRecorder:
         if not upload_url and not out_dir:
             raise ValueError("SegmentRecorder needs upload_url and/or out_dir")
         self._upload_url = upload_url
-        self._meta_url = (meta_url or "").strip() or None
         self._dir = out_dir
         self._segment = float(segment_seconds)
         self._fps = fps
@@ -225,14 +90,9 @@ class SegmentRecorder:
         self._size: tuple[int, int] | None = None
         self._segment_index = 0
         self._mp4_disabled = False
-        # Single worker: read/copy/upload/unlink off the asyncio thread entirely.
-        self._segment_io_executor = ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix="lifelens-segment-io",
-        )
 
     def _finalize_segment_file(self) -> None:
-        """Close writer; heavy I/O runs in _segment_finalize_worker (does not block WebSocket)."""
+        """Close writer, upload/copy MP4, delete temp file."""
         if self._writer is None or self._current_path is None:
             return
 
@@ -241,19 +101,43 @@ class SegmentRecorder:
         path = self._current_path
         self._current_path = None
 
+        try:
+            data = path.read_bytes()
+        except OSError as e:
+            if not self._quiet:
+                print(f"[!] Could not read segment file: {e}")
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return
+
         idx = self._segment_index
         self._segment_index += 1
-        out_dir_str = str(self._dir) if self._dir is not None else None
 
-        self._segment_io_executor.submit(
-            _segment_finalize_worker,
-            str(path),
-            idx,
-            out_dir_str,
-            self._meta_url,
-            self._upload_url,
-            self._quiet,
-        )
+        if self._upload_url:
+            try:
+                _http_post_mp4(self._upload_url, data, idx, self._quiet)
+            except RuntimeError as e:
+                if not self._quiet:
+                    print(f"[!] {e}")
+
+        if self._dir is not None:
+            self._dir.mkdir(parents=True, exist_ok=True)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            dest = self._dir / f"lifelens_{ts}_{idx:04d}.mp4"
+            try:
+                shutil.copyfile(path, dest)
+                if not self._quiet:
+                    print(f"[+] Saved copy: {dest}")
+            except OSError as e:
+                if not self._quiet:
+                    print(f"[!] Could not save segment copy: {e}")
+
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     def _open_writer(self, w: int, h: int) -> None:
         import cv2
@@ -280,8 +164,6 @@ class SegmentRecorder:
         self._size = (w, h)
         if not self._quiet:
             where = []
-            if self._meta_url:
-                where.append(f"meta {self._meta_url}")
             if self._upload_url:
                 where.append(f"upload {self._upload_url}")
             if self._dir is not None:
@@ -334,7 +216,6 @@ class SegmentRecorder:
                 self._finalize_segment_file()
             self._size = None
             self._segment_start = None
-        self._segment_io_executor.shutdown(wait=True)
         if not self._quiet:
             print("[+] Segment pipeline closed")
 
@@ -435,7 +316,7 @@ async def _client_handler(
                     saved_count += 1
 
                 if segment_recorder is not None:
-                    await asyncio.to_thread(segment_recorder.write_jpeg, message, now)
+                    segment_recorder.write_jpeg(message, now)
 
                 if not quiet and now - t_last_log >= 1.0:
                     t_last_log = now
@@ -497,42 +378,40 @@ def _run_server_thread(
 
 
 def _parse_args() -> argparse.Namespace:
-    _load_dotenv()
     p = argparse.ArgumentParser(description="RayBanStream WebSocket JPEG receiver")
-    p.add_argument("--host", default=_env_str("LIFELENS_HOST", "0.0.0.0") or "0.0.0.0")
-    p.add_argument("--port", type=int, default=_env_int("LIFELENS_PORT", 8765))
-    p.add_argument("--latest", default=_env_str("LIFELENS_LATEST", "latest.jpg"), help="Empty string to disable latest.jpg")
-    p.add_argument("--record-dir", default=_env_str("LIFELENS_RECORD_DIR", ""), help="Save JPEG frames here")
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--latest", default="latest.jpg", help="Empty string to disable writing latest.jpg")
+    p.add_argument("--record-dir", default="", help="Save every JPEG frame as frame_NNNNNN.jpg")
     p.add_argument(
         "--send-segment-url",
-        default=_env_str("LIFELENS_SEND_SEGMENT_URL", ""),
-        help="POST each MP4 here, e.g. http://100.x.x.x:8788/segment",
-    )
-    p.add_argument(
-        "--send-segment-meta-url",
-        default=_env_str("LIFELENS_SEND_SEGMENT_META_URL", ""),
-        help="Optional POST JSON before each MP4 (segment_receiver /meta)",
+        default="",
+        help="HTTP POST each completed MP4 here (body = raw video/mp4). No local save unless --segment-dir",
     )
     p.add_argument(
         "--segment-dir",
-        default=_env_str("LIFELENS_SEGMENT_DIR", ""),
-        help="Optional: also save MP4 copies on this Mac",
+        default="",
+        help="Also save a copy of each MP4 segment to this directory (optional)",
     )
     p.add_argument(
         "--no-segments",
         action="store_true",
-        default=_env_bool("LIFELENS_NO_SEGMENTS"),
-        help="Disable MP4 encode/upload",
+        help="Disable MP4 segment encode/upload entirely (preview + relay only)",
     )
-    p.add_argument("--segment-seconds", type=float, default=_env_float("LIFELENS_SEGMENT_SECONDS", 30.0))
-    p.add_argument("--segment-fps", type=float, default=_env_float("LIFELENS_SEGMENT_FPS", 24.0))
     p.add_argument(
-        "--no-display",
-        action="store_true",
-        default=_env_bool("LIFELENS_NO_DISPLAY"),
-        help="No OpenCV window",
+        "--segment-seconds",
+        type=float,
+        default=30.0,
+        help="Length of each recording file in seconds (default 30)",
     )
-    p.add_argument("--quiet", action="store_true", default=_env_bool("LIFELENS_QUIET"))
+    p.add_argument(
+        "--segment-fps",
+        type=float,
+        default=24.0,
+        help="FPS passed to VideoWriter (default 24, match glasses stream)",
+    )
+    p.add_argument("--no-display", action="store_true", help="No OpenCV window (server only)")
+    p.add_argument("--quiet", action="store_true")
     return p.parse_args()
 
 
@@ -547,11 +426,9 @@ if __name__ == "__main__":
 
     want_segments = not args.no_segments and (send_url is not None or segment_dir is not None)
     segment_recorder: SegmentRecorder | None = None
-    meta_url = (args.send_segment_meta_url or "").strip() or None
     if want_segments:
         segment_recorder = SegmentRecorder(
             upload_url=send_url,
-            meta_url=meta_url,
             out_dir=segment_dir,
             segment_seconds=args.segment_seconds,
             fps=args.segment_fps,
@@ -567,8 +444,6 @@ if __name__ == "__main__":
     if record_dir:
         print(f"  JPEG frames: {record_dir}/")
     if segment_recorder is not None:
-        if meta_url:
-            print(f"  MP4 meta: POST JSON -> {meta_url} (before each segment)")
         if send_url:
             print(f"  MP4 upload: POST -> {send_url} (~every {args.segment_seconds:g}s)")
         if segment_dir is not None:
@@ -577,7 +452,7 @@ if __name__ == "__main__":
         print("  MP4 segments: off (--no-segments)")
     else:
         print(
-            "  MP4 segments: off (set LIFELENS_SEND_SEGMENT_URL in .env or pass --send-segment-url)"
+            "  MP4 segments: off (pass --send-segment-url and/or --segment-dir to enable)"
         )
 
     if args.no_display:
