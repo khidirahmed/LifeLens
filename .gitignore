@@ -31,8 +31,5 @@ stream_server/__pycache__/
 python-receiver/__pycache__/
 *.pyc
 
-# Secrets — never commit (root or nested)
+# Secrets — never commit (matches .env in any folder; not .env.example)
 .env
-**/.env
-!.env.example
-!**/.env.example
