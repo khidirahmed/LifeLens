@@ -410,6 +410,11 @@ async def _client_handler(
     saved_count = 0
     times: deque[float] = deque(maxlen=30)
     t_last_log = time.monotonic()
+    loop = asyncio.get_running_loop()
+
+    # Pre-create record_dir once so we don't call mkdir inside the hot loop.
+    if record_dir is not None:
+        record_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         async for message in websocket:
@@ -422,20 +427,26 @@ async def _client_handler(
                 frame_count += 1
                 times.append(now)
 
+                # preview.update_jpeg is a single lock + bytes assign — fast, safe on loop.
                 if preview is not None:
                     preview.update_jpeg(message)
 
+                # All disk/CPU work runs in the default thread-pool executor WITHOUT
+                # await so this receive loop is never blocked.  The TCP window stays
+                # open and iOS never sees a freeze.
                 if latest_path is not None:
-                    latest_path.write_bytes(message)
+                    loop.run_in_executor(None, latest_path.write_bytes, message)
 
                 if record_dir is not None:
-                    record_dir.mkdir(parents=True, exist_ok=True)
                     dest = record_dir / f"frame_{saved_count:06d}.jpg"
-                    dest.write_bytes(message)
                     saved_count += 1
+                    loop.run_in_executor(None, dest.write_bytes, message)
 
+                # segment_recorder.write_jpeg does JPEG decode + VideoWriter encode —
+                # CPU-heavy.  Fire-and-forget into the thread pool; SegmentRecorder's
+                # internal lock keeps frames ordered.
                 if segment_recorder is not None:
-                    await asyncio.to_thread(segment_recorder.write_jpeg, message, now)
+                    loop.run_in_executor(None, segment_recorder.write_jpeg, message, now)
 
                 if not quiet and now - t_last_log >= 1.0:
                     t_last_log = now
