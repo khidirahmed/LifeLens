@@ -20,8 +20,7 @@ struct LifeLensApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(sdkConfigureError: sdkError)
-                .preferredColorScheme(.dark)
+            RootView(sdkConfigureError: sdkError)
         }
     }
 

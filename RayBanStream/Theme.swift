@@ -3,10 +3,10 @@ import SwiftUI
 // MARK: - LifeLens Theme
 
 enum LifeLensTheme {
-    // Primary colors - Light Pink & Navy Blue
-    static let pink = Color(red: 1.0, green: 0.7, blue: 0.78)        // Soft pink
-    static let pinkLight = Color(red: 1.0, green: 0.85, blue: 0.88)  // Lighter pink
-    static let pinkDark = Color(red: 0.95, green: 0.55, blue: 0.65)  // Deeper pink
+    // Trustworthy palette: calm blue/teal (primary accent), amber (warnings), red (errors)
+    static let pink = Color(red: 0.18, green: 0.78, blue: 0.68)       // Teal accent (replaces pink)
+    static let pinkLight = Color(red: 0.55, green: 0.93, blue: 0.88)  // Soft light teal
+    static let pinkDark = Color(red: 0.10, green: 0.48, blue: 0.41)   // Dark teal
 
     static let navy = Color(red: 0.08, green: 0.1, blue: 0.18)       // Deep navy
     static let navyLight = Color(red: 0.12, green: 0.15, blue: 0.25) // Lighter navy
@@ -23,13 +23,13 @@ enum LifeLensTheme {
 
     // Status colors
     static let success = Color(red: 0.4, green: 0.85, blue: 0.6)
-    static let warning = Color(red: 1.0, green: 0.75, blue: 0.35)
-    static let error = Color(red: 1.0, green: 0.45, blue: 0.45)
+    static let warning = Color(red: 1.0, green: 0.72, blue: 0.22)      // Amber
+    static let error = Color(red: 0.95, green: 0.35, blue: 0.35)       // Soft red
     static let info = pink
 
     // Card styling
     static let cardBackground = navyLight
-    static let cardBorderColor = pink.opacity(0.2)
+    static let cardBorderColor = pink.opacity(0.18)
     static let cardShadowColor = Color.black.opacity(0.3)
 
     // Spacing

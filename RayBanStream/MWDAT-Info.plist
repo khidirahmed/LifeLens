@@ -38,5 +38,18 @@
 	<string>AR|1319027990043912|f169cf8e8703925f5932fbdc64411c03</string>
 	<key>AppLinkURLScheme</key>
 	<string>raybanstream://</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Allow plain ws:// WebSocket connections to your local Python receiver.
+		     IP addresses cannot be listed in NSExceptionDomains, so
+		     NSAllowsArbitraryLoads is required for local-network streaming. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_ws._tcp</string>
+	</array>
 </dict>
 </plist>

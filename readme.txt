@@ -14,3 +14,5 @@ tailscale ssh asus@100.85.243.115
 python3 segment_receiver1.py --host 0.0.0.0 --port 8788 --ws-port 8789
 
 
+
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
