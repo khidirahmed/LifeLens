@@ -4,7 +4,8 @@ LifeLens video analysis — Qwen2-VL fall screening via an OpenAI-compatible HTT
 Samples video frames, sends batched image+text requests to LIFELENS_VLM_BASE_URL,
 parses JSON. Requires LIFELENS_VLM_API_KEY and LIFELENS_VLM_BASE_URL.
 
-Optional: LIFELENS_ALERT_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID for clip alerts.
+Optional on fall: LIFELENS_ALERT_URL (HTTP clip upload), Telegram — separate from VLM.
+Set LIFELENS_DISABLE_ALERT_HTTP=1 to skip the alert URL POST (VLM still runs).
 Retell voice calls are placed from relay_server.py (fall WebSocket results), not from this module.
 load_dotenv(stream_server/.env) when python-dotenv is installed.
 
@@ -575,6 +576,8 @@ def vlm_result_to_events(
 
 
 def post_alert_http(video_path: Path, message: str) -> None:
+    if _env_str("LIFELENS_DISABLE_ALERT_HTTP", "").lower() in ("1", "true", "yes"):
+        return
     url = _env_str("LIFELENS_ALERT_URL", "").strip()
     if not url or not video_path.is_file():
         return
