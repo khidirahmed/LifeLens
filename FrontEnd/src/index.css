@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-blue text-white font-sans;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: "Playfair Display", Georgia, serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-tan text-brown-dark font-semibold px-8 py-3 rounded-sm tracking-wide
+           hover:bg-tan-dark transition-colors duration-200 text-sm uppercase;
+  }
+
+  .btn-ghost {
+    @apply border border-tan text-tan font-semibold px-8 py-3 rounded-sm tracking-wide
+           hover:bg-tan hover:text-brown-dark transition-colors duration-200 text-sm uppercase;
+  }
+
+  .input-field {
+    @apply w-full bg-slate-dark border border-white/20 rounded-sm px-4 py-3 text-white
+           placeholder-white/40 focus:outline-none focus:border-tan transition-colors duration-200
+           text-sm;
+  }
+
+  .card {
+    @apply bg-slate-dark/60 border border-white/10 rounded-sm p-6 backdrop-blur-sm;
+  }
+}
