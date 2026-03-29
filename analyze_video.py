@@ -467,6 +467,42 @@ class FolderFallDetector:
         logger.info(f"{'='*55}")
 
 
+# ── Library API (called by segment_receiver.py) ────────────────────────────────
+def analyze_clip(mp4_bytes: bytes) -> list:
+    """
+    Analyze raw MP4 bytes for fall events. No output video is written.
+    Returns a list of event dicts (empty list = no falls detected).
+
+    Each event dict contains:
+      "video", "frame", "timestamp", "type" ("fast"|"slow"),
+      "magnitude", "blur"
+
+    Called by segment_receiver.py for every 30-second segment that arrives
+    from relay_server.py over the WebSocket channel.
+    """
+    import os as _os
+    import tempfile
+
+    # Write MP4 bytes to a temp input file so VideoProcessor can open it.
+    fd_in, tmp_in = tempfile.mkstemp(suffix=".mp4")
+    _os.write(fd_in, mp4_bytes)
+    _os.close(fd_in)
+
+    # VideoProcessor always writes an annotated output — give it a throwaway path.
+    fd_out, tmp_out = tempfile.mkstemp(suffix="_annotated.mp4")
+    _os.close(fd_out)
+
+    try:
+        processor = VideoProcessor(cfg)
+        return processor.process(tmp_in, tmp_out)
+    except Exception as exc:
+        logger.error(f"analyze_clip error: {exc}")
+        return []
+    finally:
+        Path(tmp_in).unlink(missing_ok=True)
+        Path(tmp_out).unlink(missing_ok=True)
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     detector = FolderFallDetector(cfg)
