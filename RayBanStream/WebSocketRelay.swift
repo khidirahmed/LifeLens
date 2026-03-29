@@ -8,11 +8,16 @@ import Observation
 @Observable
 final class WebSocketRelay: NSObject {
     var isConnected = false
+    var isConnecting = false
+    var connectionError: String?
     var framesSent: Int = 0
     var serverURL: String = ""
 
     private var webSocket: URLSessionWebSocketTask?
     private var session: URLSession?
+    /// Backpressure flag: true while a frame send is in-flight.
+    /// Prevents WebSocket send buffer from filling up and choking the stream.
+    private var isSending = false
 
     /// JPEG compression quality (0.0 - 1.0). Lower = smaller frames, faster throughput.
     var jpegQuality: CGFloat = 0.5
@@ -28,11 +33,13 @@ final class WebSocketRelay: NSObject {
 
     func connect(to url: String) {
         guard let wsURL = URL(string: url) else {
-            print("[WebSocket] Invalid URL: \(url)")
+            connectionError = "Invalid URL"
             return
         }
 
         serverURL = url
+        isConnecting = true
+        connectionError = nil
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = session?.webSocketTask(with: wsURL)
         webSocket?.resume()
@@ -43,6 +50,9 @@ final class WebSocketRelay: NSObject {
         webSocket?.cancel(with: .normalClosure, reason: nil)
         webSocket = nil
         isConnected = false
+        isConnecting = false
+        isSending = false
+        connectionError = nil
     }
 
     /// Send a UIImage frame as JPEG bytes over the WebSocket.
@@ -52,15 +62,18 @@ final class WebSocketRelay: NSObject {
         }
 
         Task { @MainActor in
-            guard isConnected else { return }
+            // Drop frame if not connected or a send is already in-flight.
+            // This keeps the WebSocket send buffer from filling up and
+            // choking the stream after ~12 seconds.
+            guard isConnected, !isSending else { return }
+            isSending = true
             webSocket?.send(.data(data)) { [weak self] error in
-                if let error = error {
-                    print("[WebSocket] Send error: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
+                DispatchQueue.main.async {
+                    self?.isSending = false
+                    if let error = error {
+                        print("[WebSocket] Send error: \(error.localizedDescription)")
                         self?.isConnected = false
-                    }
-                } else {
-                    DispatchQueue.main.async {
+                    } else {
                         self?.framesSent += 1
                     }
                 }
@@ -115,8 +128,24 @@ extension WebSocketRelay: URLSessionWebSocketDelegate {
     ) {
         DispatchQueue.main.async {
             self.isConnected = true
+            self.isConnecting = false
+            self.connectionError = nil
             self.framesSent = 0
             print("[WebSocket] Connected to \(self.serverURL)")
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        DispatchQueue.main.async {
+            self.isConnected = false
+            self.isConnecting = false
+            if let error = error {
+                self.connectionError = error.localizedDescription
+            }
         }
     }
 
@@ -128,6 +157,7 @@ extension WebSocketRelay: URLSessionWebSocketDelegate {
     ) {
         DispatchQueue.main.async {
             self.isConnected = false
+            self.isConnecting = false
             print("[WebSocket] Disconnected (code: \(closeCode))")
         }
     }
