@@ -8,20 +8,21 @@ Endpoints:
 
 Bind to 0.0.0.0 so Tailscale can reach the process; use the machine’s tailnet IP from `tailscale ip -4`.
 
-Default save location: ~/Documents/stream_server/received_segments (override with --dir).
+Default save: ~/Documents/stream_server/received_segments
+  (e.g. user asus on Linux: /home/asus/Documents/stream_server/received_segments)
+Override: --dir /path or env LIFELENS_RECEIVER_DIR
 
-Example (ASUS):
-  python segment_receiver.py --host 0.0.0.0 --port 8788
+Example (ASUS, user asus — saves under /home/asus/Documents/...):
+  python3 segment_receiver.py --host 0.0.0.0 --port 8788
 
-Example (Mac relay):
-  python relay_server.py --send-segment-meta-url http://100.x.x.x:8788/meta \\
-    --send-segment-url http://100.x.x.x:8788/segment
+Mac relay .env must use a REAL Tailscale IP (tailscale ip -4 on ASUS), not 100.x.x.x
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,8 +31,12 @@ from urllib.parse import urlparse
 
 
 def _default_receive_dir() -> Path:
-    # Use expanduser() so the path is one expression (avoids typos like Path.ho vs Path.home).
-    return Path("~/Documents/stream_server/received_segments").expanduser()
+    env = os.environ.get("LIFELENS_RECEIVER_DIR", "").strip()
+    if env:
+        return Path(env).expanduser().resolve()
+    return (
+        Path.home() / "Documents" / "stream_server" / "received_segments"
+    ).resolve()
 
 
 class SegmentReceiverHandler(BaseHTTPRequestHandler):
@@ -99,7 +104,10 @@ def main() -> None:
     p.add_argument(
         "--dir",
         default=str(_default_receive_dir()),
-        help="Directory for incoming .mp4 files (default: ~/Documents/stream_server/received_segments)",
+        help=(
+            "Directory for .mp4 files (default: ~/Documents/stream_server/received_segments; "
+            "or set LIFELENS_RECEIVER_DIR, e.g. /home/asus/Documents/stream_server/received_segments)"
+        ),
     )
     args = p.parse_args()
 
