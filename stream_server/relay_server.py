@@ -14,13 +14,15 @@ MP4 segments are not saved locally by default. Use --send-segment-url to HTTP PO
 completed segment (~every 30s). Optional --segment-dir also writes a copy to disk.
 Use --no-display for headless (no OpenCV window).
 
-Tailscale: set LIFELENS_SEND_SEGMENT_URL (and optional LIFELENS_SEND_SEGMENT_META_URL) in
-stream_server/.env, or pass --send-segment-url / --send-segment-meta-url. See segment_receiver.py.
+Phone / glasses connect to this Mac on your LAN (same Wi-Fi): ws://<LAN-IP>:<port>.
+That does not use Tailscale. Tailscale IPs in .env are only for this Mac → ASUS
+(segment_receiver): LIFELENS_SEND_SEGMENT_URL, LIFELENS_RECEIVER_WS, etc.
 
 Environment (stream_server/.env):
-  LIFELENS_HOST, LIFELENS_PORT, LIFELENS_LATEST, LIFELENS_RECORD_DIR,
+  LIFELENS_HOST, LIFELENS_PORT, LIFELENS_ADVERTISE_IP (optional override for printed phone URL),
+  LIFELENS_LATEST, LIFELENS_RECORD_DIR,
   LIFELENS_SEND_SEGMENT_URL, LIFELENS_SEND_SEGMENT_META_URL, LIFELENS_SEGMENT_DIR,
-  LIFELENS_SEGMENT_SECONDS, LIFELENS_SEGMENT_FPS,
+  LIFELENS_RECEIVER_WS, LIFELENS_SEGMENT_SECONDS, LIFELENS_SEGMENT_FPS,
   LIFELENS_NO_SEGMENTS, LIFELENS_NO_DISPLAY, LIFELENS_QUIET (true/1/yes)
 CLI flags override .env defaults when provided.
 """
@@ -99,6 +101,121 @@ def _is_jpeg(data: bytes) -> bool:
     return len(data) >= 3 and data[:3] == b"\xff\xd8\xff"
 
 
+def _is_image_bytes(data: bytes) -> bool:
+    """
+    True if OpenCV can decode this buffer as an image (JPEG, PNG, etc.).
+    Matches python-receiver/receiver.py — the Meta app may send non-JPEG
+    binary; strict JPEG-only checks yield frames=0 while the socket is alive.
+    """
+    if len(data) < 10:
+        return False
+    if _is_jpeg(data):
+        return True
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return False
+    arr = np.frombuffer(data, dtype=np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR) is not None
+
+
+# ── Persistent WebSocket client to segment_receiver.py ─────────────────────────
+class ReceiverLink:
+    """
+    Maintains a long-lived WebSocket connection from relay_server.py (Mac)
+    to segment_receiver.py (ASUS) for constant bidirectional communication.
+
+    Outbound (relay → receiver):
+      TEXT  JSON {"type":"segment","index":N,"size":B}
+      BINARY raw MP4 bytes
+
+    Inbound (receiver → relay):
+      TEXT  JSON {"type":"result","index":N,"fall":bool,"events":[...]}
+
+    Call submit_segment() from any thread (SegmentRecorder worker).
+    Call run() as an asyncio task inside _serve_forever().
+    """
+
+    def __init__(self, url: str, quiet: bool) -> None:
+        self._url = url
+        self._quiet = quiet
+        self._queue: asyncio.Queue | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    # ── Thread-safe entry point ────────────────────────────────────────────────
+    def submit_segment(self, index: int, data: bytes) -> None:
+        """Called from SegmentRecorder thread — enqueues segment for WebSocket send."""
+        if self._loop is None or self._queue is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._queue.put((index, data)), self._loop)
+
+    # ── Async main loop ────────────────────────────────────────────────────────
+    async def run(self) -> None:
+        """Long-running task — reconnects automatically if ASUS drops."""
+        self._loop = asyncio.get_running_loop()
+        self._queue = asyncio.Queue()
+        while True:
+            try:
+                async with websockets.connect(
+                    self._url,
+                    max_size=None,
+                    ping_interval=None,  # segments are the heartbeat
+                ) as ws:
+                    if not self._quiet:
+                        print(f"[->receiver] Connected to segment_receiver.py at {self._url}")
+                    send_t = asyncio.create_task(self._send_loop(ws))
+                    recv_t = asyncio.create_task(self._recv_loop(ws))
+                    done, pending = await asyncio.wait(
+                        [send_t, recv_t], return_when=asyncio.FIRST_EXCEPTION
+                    )
+                    for t in pending:
+                        t.cancel()
+                    for t in done:
+                        exc = t.exception()
+                        if exc:
+                            raise exc
+            except Exception as exc:
+                if not self._quiet:
+                    print(f"[->receiver] Disconnected ({exc}) — retrying in 5 s")
+                await asyncio.sleep(5)
+
+    async def _send_loop(self, ws) -> None:
+        """Drain the segment queue and send each one as meta + binary."""
+        while True:
+            index, data = await self._queue.get()
+            meta = json.dumps({"type": "segment", "index": index, "size": len(data)})
+            await ws.send(meta)
+            await ws.send(data)
+            if not self._quiet:
+                print(f"[->receiver] Sent segment #{index} ({len(data)} B) via WebSocket")
+
+    async def _recv_loop(self, ws) -> None:
+        """Handle analysis results coming back from segment_receiver.py."""
+        async for message in ws:
+            if not isinstance(message, str):
+                continue
+            try:
+                obj = json.loads(message)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("type") != "result":
+                continue
+            idx = obj.get("index", "?")
+            events = obj.get("events", [])
+            if obj.get("fall"):
+                print(f"\n{'='*55}")
+                print(f"  *** FALL DETECTED — segment #{idx} ***")
+                for ev in events:
+                    print(
+                        f"  [{ev.get('type','?').upper()}]  {ev.get('timestamp')}  "
+                        f"frame={ev.get('frame')}  mag={ev.get('magnitude')}"
+                    )
+                print(f"{'='*55}\n")
+            elif not self._quiet:
+                print(f"[->receiver] Segment #{idx} — no fall detected")
+
+
 def _http_post_json(url: str, payload: dict, quiet: bool) -> None:
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
@@ -141,15 +258,17 @@ class SegmentRecorder:
         segment_seconds: float = 30.0,
         fps: float = 24.0,
         quiet: bool = False,
+        receiver_link: "ReceiverLink | None" = None,
     ) -> None:
-        if not upload_url and not out_dir:
-            raise ValueError("SegmentRecorder needs upload_url and/or out_dir")
+        if not upload_url and not out_dir and receiver_link is None:
+            raise ValueError("SegmentRecorder needs upload_url, out_dir, or receiver_link")
         self._upload_url = upload_url
         self._meta_url = (meta_url or "").strip() or None
         self._dir = out_dir
         self._segment = float(segment_seconds)
         self._fps = fps
         self._quiet = quiet
+        self._receiver_link = receiver_link  # WebSocket channel to segment_receiver.py
         self._lock = threading.Lock()
         self._writer = None
         self._current_path: Path | None = None
@@ -204,6 +323,11 @@ class SegmentRecorder:
             except RuntimeError as e:
                 if not self._quiet:
                     print(f"[!] {e}")
+
+        # WebSocket channel — send to segment_receiver.py for analysis + feedback.
+        # submit_segment() is thread-safe; result comes back via ReceiverLink._recv_loop.
+        if self._receiver_link is not None:
+            self._receiver_link.submit_segment(idx, data)
 
         if self._dir is not None:
             self._dir.mkdir(parents=True, exist_ok=True)
@@ -386,9 +510,12 @@ async def _client_handler(
         async for message in websocket:
             now = time.monotonic()
             if isinstance(message, bytes):
-                if not _is_jpeg(message):
+                if not _is_image_bytes(message):
                     if not quiet:
-                        print(f"[!] Binary chunk {len(message)} B (not JPEG header)")
+                        head = message[:12].hex() if len(message) >= 12 else message.hex()
+                        print(
+                            f"[!] Binary {len(message)} B — OpenCV cannot decode as image (hex {head})"
+                        )
                     continue
                 frame_count += 1
                 times.append(now)
@@ -418,7 +545,8 @@ async def _client_handler(
                     fps = len(times) / (times[-1] - times[0]) if len(times) > 1 else 0.0
                     print(f"    frames={frame_count}  ~{fps:.1f} fps  last={len(message)} B")
             elif isinstance(message, str):
-                print(f"    status: {message}")
+                snippet = message if len(message) <= 240 else (message[:240] + "…")
+                print(f"    text from client: {snippet!r}")
             else:
                 print(f"[!] Unexpected message type: {type(message)}")
     except websockets.exceptions.ConnectionClosedOK:
@@ -428,7 +556,13 @@ async def _client_handler(
     finally:
         if segment_recorder is not None:
             segment_recorder.close()
-        print(f"[-] Disconnected {peer}  (frames={frame_count})")
+        if frame_count == 0:
+            print(
+                f"[-] Disconnected {peer}  (frames=0 — start live stream in the Ray-Ban Meta app; "
+                "URL must be ws://<this Mac's Wi-Fi IP>:<port>. If you see 'cannot decode' lines, the wire format changed.)"
+            )
+        else:
+            print(f"[-] Disconnected {peer}  (frames={frame_count})")
 
 
 async def _serve_forever(
@@ -438,8 +572,14 @@ async def _serve_forever(
     record_dir: Path | None,
     preview: FramePreview | None,
     segment_recorder: SegmentRecorder | None,
+    receiver_link: "ReceiverLink | None",
     quiet: bool,
 ) -> None:
+    # If a ReceiverLink is configured, start it as a background task so it
+    # maintains a persistent WebSocket connection to segment_receiver.py.
+    if receiver_link is not None:
+        asyncio.create_task(receiver_link.run())
+
     async with websockets.serve(
         lambda ws: _client_handler(
             ws,
@@ -467,11 +607,13 @@ def _run_server_thread(
     record_dir: Path | None,
     preview: FramePreview | None,
     segment_recorder: SegmentRecorder | None,
+    receiver_link: "ReceiverLink | None",
     quiet: bool,
 ) -> None:
     asyncio.run(
         _serve_forever(
-            host, port, latest_path, record_dir, preview, segment_recorder, quiet
+            host, port, latest_path, record_dir, preview,
+            segment_recorder, receiver_link, quiet,
         )
     )
 
@@ -484,6 +626,14 @@ def _parse_args() -> argparse.Namespace:
         default=_env_str("LIFELENS_HOST", "0.0.0.0") or "0.0.0.0",
     )
     p.add_argument("--port", type=int, default=_env_int("LIFELENS_PORT", 8765))
+    p.add_argument(
+        "--advertise-ip",
+        default=_env_str("LIFELENS_ADVERTISE_IP", ""),
+        help=(
+            "IP shown for the phone/glasses WebSocket URL (default: guessed LAN). "
+            "Use if the guess is wrong. Phone uses same Wi-Fi as this Mac — not Tailscale."
+        ),
+    )
     p.add_argument(
         "--latest",
         default=_env_str("LIFELENS_LATEST", "latest.jpg"),
@@ -534,6 +684,16 @@ def _parse_args() -> argparse.Namespace:
         help="No OpenCV window (server only)",
     )
     p.add_argument(
+        "--receiver-ws",
+        default=_env_str("LIFELENS_RECEIVER_WS", ""),
+        help=(
+            "WebSocket URL of segment_receiver.py for constant bidirectional communication "
+            "(e.g. ws://100.x.x.x:8789). "
+            "Segments are sent here for analysis; fall results come back over the same connection. "
+            "Set LIFELENS_RECEIVER_WS in .env or pass this flag."
+        ),
+    )
+    p.add_argument(
         "--quiet",
         action="store_true",
         default=_env_bool("LIFELENS_QUIET"),
@@ -549,10 +709,18 @@ if __name__ == "__main__":
     send_url = (args.send_segment_url or "").strip() or None
     seg_dir_raw = (args.segment_dir or "").strip()
     segment_dir: Path | None = Path(seg_dir_raw).resolve() if seg_dir_raw else None
+    receiver_ws_url = (args.receiver_ws or "").strip() or None
 
-    want_segments = not args.no_segments and (send_url is not None or segment_dir is not None)
-    segment_recorder: SegmentRecorder | None = None
+    # ReceiverLink — persistent WebSocket client to segment_receiver.py.
+    receiver_link: ReceiverLink | None = None
+    if receiver_ws_url:
+        receiver_link = ReceiverLink(url=receiver_ws_url, quiet=args.quiet)
+
     meta_url = (args.send_segment_meta_url or "").strip() or None
+    want_segments = not args.no_segments and (
+        send_url is not None or segment_dir is not None or receiver_link is not None
+    )
+    segment_recorder: SegmentRecorder | None = None
     if want_segments:
         segment_recorder = SegmentRecorder(
             upload_url=send_url,
@@ -561,12 +729,15 @@ if __name__ == "__main__":
             segment_seconds=args.segment_seconds,
             fps=args.segment_fps,
             quiet=args.quiet,
+            receiver_link=receiver_link,
         )
 
-    lan = _guess_lan_ip()
+    phone_ip = (args.advertise_ip or "").strip() or _guess_lan_ip()
     print("RayBan stream server")
     print(f"  Listening:  ws://{args.host}:{args.port}")
-    print(f"  iPhone URL (guess):  ws://{lan}:{args.port}")
+    print(f"  Phone / glasses URL:  ws://{phone_ip}:{args.port}  (LAN — same Wi-Fi; Tailscale not used)")
+    if not (args.advertise_ip or "").strip():
+        print(f"    (LAN guessed as {phone_ip}; set LIFELENS_ADVERTISE_IP or --advertise-ip if wrong)")
     if latest_path:
         print(f"  Latest frame file: {latest_path}")
     if record_dir:
@@ -578,7 +749,9 @@ if __name__ == "__main__":
             print(f"  MP4 upload: POST -> {send_url} (~every {args.segment_seconds:g}s)")
         if segment_dir is not None:
             print(f"  MP4 disk copy: {segment_dir}/")
-        for label, u in (("meta", meta_url), ("upload", send_url)):
+        if receiver_link is not None:
+            print(f"  WebSocket -> segment_receiver: {receiver_ws_url}  (bidirectional, analysis results back)")
+        for label, u in (("meta", meta_url), ("upload", send_url), ("receiver-ws", receiver_ws_url)):
             if u and "x.x.x" in u:
                 print(
                     f"  [!] {label} URL looks like a placeholder — set a real Tailscale IP in .env "
@@ -589,8 +762,8 @@ if __name__ == "__main__":
         print("  MP4 segments: off (--no-segments)")
     else:
         print(
-            "  MP4 segments: off (set LIFELENS_SEND_SEGMENT_URL / LIFELENS_SEGMENT_DIR in .env,"
-            " or pass --send-segment-url / --segment-dir)"
+            "  MP4 segments: off (set LIFELENS_RECEIVER_WS / LIFELENS_SEND_SEGMENT_URL in .env,"
+            " or pass --receiver-ws / --send-segment-url)"
         )
 
     if args.no_display:
@@ -604,6 +777,7 @@ if __name__ == "__main__":
                     record_dir,
                     None,
                     segment_recorder,
+                    receiver_link,
                     args.quiet,
                 )
             )
@@ -628,6 +802,7 @@ if __name__ == "__main__":
                 record_dir,
                 preview,
                 segment_recorder,
+                receiver_link,
                 args.quiet,
             ),
             name="relay-websocket",
