@@ -28,12 +28,15 @@
 	<string>Needed to connect to your Ray-Ban Meta glasses for video streaming.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Needed to stream video frames to your computer on the local network.</string>
-	<key>MWDAT</key>
-	<dict>
-		<key>AppLinkURLScheme</key>
-		<string>raybanstream://</string>
-		<key>MetaAppID</key>
-		<string></string>
-	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Needed to access the Ray-Ban Meta glasses camera for live streaming.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Needed to capture audio from your Ray-Ban Meta glasses.</string>
+	<key>MetaAppID</key>
+	<string>1319027990043912</string>
+	<key>ClientToken</key>
+	<string>AR|1319027990043912|f169cf8e8703925f5932fbdc64411c03</string>
+	<key>AppLinkURLScheme</key>
+	<string>raybanstream://</string>
 </dict>
 </plist>

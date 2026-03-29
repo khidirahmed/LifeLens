@@ -38,7 +38,8 @@ final class GlassesStreamManager {
                 try await wearables.startRegistration()
                 self.registrationState = "Registering..."
             } catch {
-                self.registrationState = "Error: \(error.localizedDescription)"
+                let e = error as NSError
+                self.registrationState = "Error: \(e.localizedDescription) [domain:\(e.domain) code:\(e.code)]"
             }
         }
     }
@@ -49,7 +50,8 @@ final class GlassesStreamManager {
                 try await wearables.startUnregistration()
                 self.registrationState = "Unregistered"
             } catch {
-                self.registrationState = "Error: \(error.localizedDescription)"
+                let e = error as NSError
+                self.registrationState = "Error: \(e.localizedDescription) [domain:\(e.domain) code:\(e.code)]"
             }
         }
     }
@@ -94,7 +96,8 @@ final class GlassesStreamManager {
                 let status = try await wearables.checkPermissionStatus(.camera)
                 self.cameraPermission = "\(status)"
             } catch {
-                self.cameraPermission = "Error: \(error.localizedDescription)"
+                let e = error as NSError
+                self.cameraPermission = "Error: \(e.localizedDescription) [domain:\(e.domain) code:\(e.code)]"
             }
         }
     }
@@ -105,7 +108,8 @@ final class GlassesStreamManager {
                 let status = try await wearables.requestPermission(.camera)
                 self.cameraPermission = "\(status)"
             } catch {
-                self.cameraPermission = "Error: \(error.localizedDescription)"
+                let e = error as NSError
+                self.cameraPermission = "Error: \(e.localizedDescription) [domain:\(e.domain) code:\(e.code)]"
             }
         }
     }
