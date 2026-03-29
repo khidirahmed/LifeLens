@@ -7,7 +7,7 @@ enum LifeLensConfig {
     static var apiBaseURL: String {
         let s = UserDefaults.standard.string(forKey: userDefaultsKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let s, !s.isEmpty { return s.trimmingSuffixSlash() }
-        return "http://127.0.0.1:8000"
+        return "http://18.217.82.197:8000"
     }
 
     static func setAPIBaseURL(_ url: String) {

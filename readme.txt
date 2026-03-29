@@ -16,3 +16,11 @@ python3 segment_receiver1.py --host 0.0.0.0 --port 8788 --ws-port 8789
 
 
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+
+% rsync -avz -e "ssh -i temp.pem" \                               
+  --exclude venv \
+  --exclude __pycache__ \
+  --exclude "*.pyc" \
+  ./LifeLens/backend ec2-user@18.217.82.197:~
+  
