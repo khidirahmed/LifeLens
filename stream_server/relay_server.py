@@ -18,12 +18,14 @@ Phone / glasses connect to this Mac on your LAN (same Wi-Fi): ws://<LAN-IP>:<por
 That does not use Tailscale. Tailscale IPs in .env are only for this Mac → ASUS
 (segment_receiver): LIFELENS_SEND_SEGMENT_URL, LIFELENS_RECEIVER_WS, etc.
 
-Environment (stream_server/.env):
+Environment (stream_server/.env and repo-root .env):
   LIFELENS_HOST, LIFELENS_PORT, LIFELENS_ADVERTISE_IP (optional override for printed phone URL),
   LIFELENS_LATEST, LIFELENS_RECORD_DIR,
   LIFELENS_SEND_SEGMENT_URL, LIFELENS_SEND_SEGMENT_META_URL, LIFELENS_SEGMENT_DIR,
   LIFELENS_RECEIVER_WS, LIFELENS_SEGMENT_SECONDS, LIFELENS_SEGMENT_FPS,
   LIFELENS_NO_SEGMENTS, LIFELENS_NO_DISPLAY, LIFELENS_QUIET (true/1/yes)
+  Retell (outbound call on fall when LIFELENS_RECEIVER_WS is used): RETELL_API_KEY,
+  RETELL_FROM_NUMBER, RETELL_TO_NUMBER, optional RETELL_AGENT_ID, RETELL_DISABLE
 CLI flags override .env defaults when provided.
 """
 
@@ -31,10 +33,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import functools
 import json
 import os
 import shutil
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -44,6 +48,12 @@ from collections import deque
 from pathlib import Path
 
 import websockets
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lifelens_retell import events_to_alert_message, send_retell_fall_call
 
 
 def _load_dotenv() -> None:
@@ -206,12 +216,20 @@ class ReceiverLink:
             if obj.get("fall"):
                 print(f"\n{'='*55}")
                 print(f"  *** FALL DETECTED — segment #{idx} ***")
-                for ev in events:
+                ev_list = events if isinstance(events, list) else []
+                for ev in ev_list:
                     print(
                         f"  [{ev.get('type','?').upper()}]  {ev.get('timestamp')}  "
                         f"frame={ev.get('frame')}  mag={ev.get('magnitude')}"
                     )
                 print(f"{'='*55}\n")
+                msg = events_to_alert_message(ev_list)
+                clip_name = f"segment_{idx}.mp4"
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None,
+                    functools.partial(send_retell_fall_call, msg, clip_name=clip_name),
+                )
             elif not self._quiet:
                 print(f"[->receiver] Segment #{idx} — no fall detected")
 
