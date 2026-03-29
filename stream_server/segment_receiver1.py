@@ -68,10 +68,13 @@ def _print_fall_alert(idx: int, events: list) -> None:
     print(f"\n{'='*55}")
     print(f"  *** FALL DETECTED — segment #{idx} ***")
     for ev in events:
-        print(
+        line = (
             f"  [{ev.get('type', '?').upper()}]  {ev.get('timestamp')}  "
-            f"frame={ev.get('frame')}  mag={ev.get('magnitude')}"
+            f"frame={ev.get('frame')}  conf={ev.get('magnitude')}"
         )
+        if ev.get("brief"):
+            line += f"  — {ev['brief']}"
+        print(line)
     print(f"{'='*55}\n")
 
 

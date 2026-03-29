@@ -30,3 +30,5 @@ stream_server/.venv/
 stream_server/__pycache__/
 python-receiver/__pycache__/
 *.pyc
+
+.env/
